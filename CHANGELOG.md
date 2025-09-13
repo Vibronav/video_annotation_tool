@@ -31,3 +31,9 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ## [0.5.0] - 2024-05-06
 ### Changed
 - Allowed the have same annotations for different events.
+
+## [0.6.0] - 2025-09-13
+### Added
+- Waveform plot
+- Velocity plot
+- audio annotations when data synchronized
