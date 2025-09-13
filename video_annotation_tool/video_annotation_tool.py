@@ -4,7 +4,11 @@ import json
 import os
 import subprocess
 from scipy.io import wavfile
+from matplotlib.backends.backend_agg import FigureCanvasAgg
+import matplotlib.pyplot as plt
 import numpy as np
+import cv2
+import pandas as pd
 
 def read_wave(path):
     sample_rate, x = wavfile.read(path)
@@ -43,14 +47,47 @@ def build_waveform_image(audio_signal, sr, width, height, audio_channel, bg=(24,
 
     return img
 
-def draw_playhead(wave_img, t, duration):
-    h, w = wave_img.shape[:2]
-    if duration and duration > 0:
-        x = int((t / duration) * (w - 1))
-        x = max(0, min(w - 1, x))
-        cv2.line(wave_img, (x, 0), (x, h - 1), (0, 180, 255), 1)
-    return wave_img
+def draw_playhead(img, position, max_position):
+    h, w = img.shape[:2]
+    
+    position = float(position)
+    x = int((position / float(max_position)) * (w - 1))
+    x = max(0, min(w - 1, x))
+    cv2.line(img, (x, 0), (x, h - 1), (0, 180, 255), 1)
+    return img
 
+
+def build_velocity_image(labelled_positions_path, width, height, bg=(255, 255, 255), line=(255, 0, 0), axis=(200, 200, 200)):
+    img = np.full((height, width, 3), bg, dtype=np.uint8)
+
+    if not labelled_positions_path or not os.path.exists(labelled_positions_path):
+        cv2.putText(img, 'No velocity data', (10, height // 2), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 255), 2)
+        return img
+    
+    df = pd.read_csv(labelled_positions_path)
+
+    velocity_original = df['velocity'].copy()
+    df['velocity'] = df['velocity'].rolling(window=3, center=True).mean()
+    df['velocity'] = df['velocity'].fillna(velocity_original)
+
+    frames = df['Frame'].to_numpy(dtype=np.int64)
+    velocities = df['velocity'].fillna(0).to_numpy(dtype=np.float32)
+
+    vmax = float(np.nanmax(np.abs(velocities)))
+    v_norm = np.clip(velocities / vmax, -1.0, 1.0)
+
+    total_frames = frames.shape[0]
+    pts = []
+    for frame, val in zip(frames, v_norm):
+        x = int((frame - 1) * (width - 1) / max(1, total_frames - 1))
+        y = int((1 - (val + 1) / 2) * (height - 1))
+        pts.append((x, y))
+
+    cv2.line(img, (0, height // 2), (width - 1, height // 2), axis, 1)
+
+    cv2.polylines(img, [np.array(pts, dtype=np.int32)], False, line, 1)
+
+    return img
 
 def convert_video_to_h264(input_path):
     
@@ -115,16 +152,29 @@ def merge_annotations(video_path, new_annotations):
     existing_data["video_file"] = original_video_file
     if "video_annotations" not in existing_data:
         existing_data["video_annotations"] = {}
+    if "audio_annotations" not in existing_data:
+        existing_data["audio_annotations"] = {}
 
-    existing_data["video_annotations"].update(new_annotations)
+    for k, v in new_annotations.items():
+        if v["frame"] is None or v["time"] is None:
+            if k in existing_data["video_annotations"]:
+                del existing_data["video_annotations"][k]
+        if v["sample"] is None:
+            if k in existing_data["audio_annotations"]:
+                del existing_data["audio_annotations"][k]
+
+        elif v["frame"] is not None and v["time"] is not None and v["sample"] is not None:
+            existing_data["video_annotations"][k] = {"frame": v["frame"], "time": v["time"]}
+            existing_data["audio_annotations"][k] = {"time": v["time"], "sample": int(v["sample"])}
+
 
     with open(json_path, 'w', encoding='utf-8') as f:
         json.dump(existing_data, f, indent=4)
         print(f"Annotations for {video_path} updated in {json_path}.")
 
 def update_annotations(annotations, *frames_times):
-    for i, (frame, time) in enumerate(frames_times, start=1):
-        annotations[str(i)] = {"frame": frame, "time": time}
+    for i, (frame, time, sample_rate) in enumerate(frames_times, start=1):
+        annotations[str(i)] = {"frame": frame, "time": time, "sample": time * sample_rate}
 
 zoom_level = 1.0
 zoom_center = None
@@ -167,7 +217,7 @@ def mouse_callback(event, x, y, flags, param):
         if last_frame is not None:
             get_zoomed_frame('Video Annotation', last_frame, zoom_level, zoom_center)
 
-def annotate_video(video_path, audio_path, audio_channel):
+def annotate_video(video_path, audio_path, labelled_position_path, audio_channel):
     global zoom_level, zoom_center, last_frame
     mp4_path = convert_video_to_h264(video_path)
     cap = cv2.VideoCapture(mp4_path)
@@ -221,12 +271,14 @@ def annotate_video(video_path, audio_path, audio_channel):
         cap.release()
         return
     
+    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
     last_frame = frame.copy()
     vh, vw = frame.shape[:2]
     waveform_h = 140
+    velocity_h = 140
 
     base_waveform = build_waveform_image(audio_data, audio_sr, vw, waveform_h, audio_channel)
-
+    velocity_plot = build_velocity_image(labelled_position_path, vw, velocity_h)
 
     while True:
         if not paused:
@@ -244,11 +296,13 @@ def annotate_video(video_path, audio_path, audio_channel):
 
         wf = base_waveform.copy()
         draw_playhead(wf, time_in_seconds, audio_duration)
+        vel = velocity_plot.copy()
+        draw_playhead(vel, frame_index - 1, total_frames - 1)
 
         if display_frame.shape[1] != wf.shape[1]:
             wf = cv2.resize(wf, (display_frame.shape[1], wf.shape[0]))
         
-        combined = np.vstack([display_frame, wf])
+        combined = np.vstack([display_frame, wf, vel])
 
         title_text = f'{os.path.basename(video_path)} | {frame_index}({time_in_seconds:.2f}s){existing_annotations_title}'
         if e1_frame is not None:
@@ -288,7 +342,7 @@ def annotate_video(video_path, audio_path, audio_channel):
             e4_frame = frame_index; e4_time = time_in_seconds
             if e4_frame < e3_frame:
                 e4_frame = None
-            update_annotations(annotations, (e1_frame, e1_time), (e2_frame, e2_time), (e3_frame, e3_time), (e4_frame, e4_time))
+            update_annotations(annotations, (e1_frame, e1_time, audio_sr), (e2_frame, e2_time, audio_sr), (e3_frame, e3_time, audio_sr), (e4_frame, e4_time, audio_sr))
         elif key == ord('5') and "1" in existing_annotations:
             e1_frame = existing_annotations["1"]["frame"]; e1_time = existing_annotations["1"]["time"]
         elif key == ord('6') and "2" in existing_annotations:
@@ -297,13 +351,13 @@ def annotate_video(video_path, audio_path, audio_channel):
             e3_frame = existing_annotations["3"]["frame"]; e3_time = existing_annotations["3"]["time"]
         elif key == ord('8') and "4" in existing_annotations:
             e4_frame = existing_annotations["4"]["frame"]; e4_time = existing_annotations["4"]["time"]
-            update_annotations(annotations, (e1_frame, e1_time), (e2_frame, e2_time), (e3_frame, e3_time), (e4_frame, e4_time))
+            update_annotations(annotations, (e1_frame, e1_time, audio_sr), (e2_frame, e2_time, audio_sr), (e3_frame, e3_time, audio_sr), (e4_frame, e4_time, audio_sr))
         elif key == ord('n'):
             break
         elif key == ord('c'):
             e1_frame = e2_frame = e3_frame = e4_frame = None
             e1_time = e2_time = e3_time = e4_time = None
-            update_annotations(annotations, (e1_frame, e1_time), (e2_frame, e2_time), (e3_frame, e3_time), (e4_frame, e4_time))
+            update_annotations(annotations, (e1_frame, e1_time, audio_sr), (e2_frame, e2_time, audio_sr), (e3_frame, e3_time, audio_sr), (e4_frame, e4_time, audio_sr))
 
         if key == ord('a'): key_pressed = 'a'
         elif key == ord('d'): key_pressed = 'd'
@@ -336,7 +390,7 @@ def annotate_video(video_path, audio_path, audio_channel):
     return quit_app
 
 
-def process_videos_in_folder(video_path, audio_path, audio_channel):
+def process_videos_in_folder(video_path, audio_path, labelled_position_path, audio_channel):
 
     videos = [f for f in os.listdir(video_path) if f.lower().endswith(('.mp4', '.webm'))]
 
@@ -344,7 +398,8 @@ def process_videos_in_folder(video_path, audio_path, audio_channel):
         file_basename, ext = os.path.splitext(video_file)
         video_path = os.path.join(video_path, file_basename + ext)
         audio_path = os.path.join(audio_path, file_basename + '.wav')
-        quit_app = annotate_video(video_path, audio_path, audio_channel)
+        labelled_position_path = os.path.join(labelled_position_path, file_basename + '.csv')
+        quit_app = annotate_video(video_path, audio_path, labelled_position_path, audio_channel)
         if quit_app:
             break
 
@@ -352,6 +407,7 @@ def parse_args():
     parser = argparse.ArgumentParser(description='Annotate time instants in videos in a folder.')
     parser.add_argument('--video-path', type=str, help='Path to the folder containing video files')
     parser.add_argument('--audio-path', type=str, help='Path to the folder containing audio files')
+    parser.add_argument('--velocity-path', type=str, help='Path to the folder containing velocity files')
     parser.add_argument('--audio-channel', type=int, default=0, help='Audio channel to use for waveform (default: 0)')
     return parser.parse_args()
 
@@ -361,9 +417,10 @@ def main():
 
     video_path = args.video_path
     audio_path = args.audio_path
+    labelled_position_path = args.velocity_path
     audio_channel = args.audio_channel
 
-    process_videos_in_folder(video_path, audio_path, audio_channel)
+    process_videos_in_folder(video_path, audio_path, labelled_position_path, audio_channel)
 
 if __name__ == "__main__":
     main()
