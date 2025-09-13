@@ -21,7 +21,7 @@ This tool developed for annotating important events and phases during measuremen
 
 Execute in CLI:
 
-```python -m pip install https://github.com/OranHamza/video_annotation_tool/archive/master.zip```
+```python -m pip install https://github.com/Vibronav/video_annotation_tool/archive/master.zip```
 
 ### Setting up FFmpeg(For Windows)
 
