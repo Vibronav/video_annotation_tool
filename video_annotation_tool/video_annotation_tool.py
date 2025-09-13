@@ -89,6 +89,14 @@ def build_velocity_image(labelled_positions_path, width, height, bg=(255, 255, 2
 
     return img
 
+def durations_match(total_frames, audio_sr, audio_signal, eps=0.1):
+
+    video_duration = total_frames / 30.0
+    audio_duration = audio_signal.shape[1] / audio_sr
+    print(abs(video_duration - audio_duration))
+
+    return abs(video_duration - audio_duration) < eps
+
 def convert_video_to_h264(input_path):
     
     command_check = [
@@ -139,7 +147,7 @@ def get_json_filename(video_filename):
     base_name = base_name.strip(" _-")
     return base_name + ".json"
 
-def merge_annotations(video_path, new_annotations):
+def merge_annotations(video_path, new_annotations, should_update_audio):
     original_video_file = os.path.basename(video_path)
     json_filename = get_json_filename(original_video_file)
     json_path = os.path.join(os.path.dirname(video_path), json_filename)
@@ -152,19 +160,21 @@ def merge_annotations(video_path, new_annotations):
     existing_data["video_file"] = original_video_file
     if "video_annotations" not in existing_data:
         existing_data["video_annotations"] = {}
-    if "audio_annotations" not in existing_data:
+    if "audio_annotations" not in existing_data and should_update_audio:
         existing_data["audio_annotations"] = {}
 
     for k, v in new_annotations.items():
         if v["frame"] is None or v["time"] is None:
             if k in existing_data["video_annotations"]:
                 del existing_data["video_annotations"][k]
-        if v["sample"] is None:
+        if v["sample"] is None and should_update_audio:
             if k in existing_data["audio_annotations"]:
                 del existing_data["audio_annotations"][k]
 
-        elif v["frame"] is not None and v["time"] is not None and v["sample"] is not None:
-            existing_data["video_annotations"][k] = {"frame": v["frame"], "time": v["time"]}
+        if v["frame"] is not None and v["time"] is not None:
+            existing_data["video_annotations"][k] = {"time": v["time"], "frame": v["frame"]}
+
+        if v['sample'] is not None and should_update_audio:
             existing_data["audio_annotations"][k] = {"time": v["time"], "sample": int(v["sample"])}
 
 
@@ -380,7 +390,8 @@ def annotate_video(video_path, audio_path, labelled_position_path, audio_channel
     cv2.destroyAllWindows()
 
     if annotations:
-        merge_annotations(video_path, annotations)
+        should_update_audio = durations_match(total_frames, audio_sr, audio_data)
+        merge_annotations(video_path, annotations, should_update_audio)
     else:
         print(f"No annotations made for {video_path}.")
 
