@@ -411,10 +411,10 @@ def process_videos_in_folder(video_path, audio_path, labelled_position_path, aud
 
     for video_file in videos:
         file_basename, ext = os.path.splitext(video_file)
-        video_path = os.path.join(video_path, file_basename + ext)
-        audio_path = os.path.join(audio_path, file_basename + '.wav')
-        labelled_position_path = os.path.join(labelled_position_path, file_basename + '.csv')
-        quit_app = annotate_video(video_path, audio_path, labelled_position_path, audio_channel)
+        video_file_path = os.path.join(video_path, file_basename + ext)
+        audio_file_path = os.path.join(audio_path, file_basename + '.wav')
+        labelled_position_file_path = os.path.join(labelled_position_path, file_basename + '.csv')
+        quit_app = annotate_video(video_file_path, audio_file_path, labelled_position_file_path, audio_channel)
         if quit_app:
             break
 
