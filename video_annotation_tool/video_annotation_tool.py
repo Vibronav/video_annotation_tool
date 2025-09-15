@@ -150,7 +150,10 @@ def get_json_filename(video_filename):
 def merge_annotations(video_path, new_annotations, should_update_audio):
     original_video_file = os.path.basename(video_path)
     json_filename = get_json_filename(original_video_file)
-    json_path = os.path.join(os.path.dirname(video_path), json_filename)
+
+    parent_folder = os.path.dirname(os.path.dirname(video_path))
+    annotations_folder = os.path.join(parent_folder, "annotations")
+    json_path = os.path.join(annotations_folder, json_filename)
 
     existing_data = {}
     if os.path.exists(json_path):
@@ -177,6 +180,7 @@ def merge_annotations(video_path, new_annotations, should_update_audio):
         if v['sample'] is not None and should_update_audio:
             existing_data["audio_annotations"][k] = {"time": v["time"], "sample": int(v["sample"])}
 
+    os.makedirs(annotations_folder, exist_ok=True)
 
     with open(json_path, 'w', encoding='utf-8') as f:
         json.dump(existing_data, f, indent=4)
