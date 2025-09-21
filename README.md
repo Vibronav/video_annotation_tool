@@ -47,7 +47,22 @@ If the installation is successful, you will see something like the following:
 
 1. **Run Code**: Execute the code using the command line interface (CLI).
 
-```video_annotation_tool "your videos folder path"```
+```
+usage: video_annotation_tool.py [-h] [--video-path VIDEO_PATH] [--audio-path AUDIO_PATH] [--velocity-path VELOCITY_PATH] [--audio-channel AUDIO_CHANNEL]                                                                   
+
+Annotate time instants in videos in a folder.
+
+options:
+  -h, --help            show this help message and exit
+  --video-path VIDEO_PATH
+                        Path to the folder containing video files
+  --audio-path AUDIO_PATH
+                        Path to the folder containing audio files
+  --velocity-path VELOCITY_PATH
+                        Path to the folder containing velocity files
+  --audio-channel AUDIO_CHANNEL
+                        Audio channel to use for waveform (default: 0)
+```
 
 OR(run this command in the commond line from the folder where your 'video_annotation_tool.py' script is located.)
 
@@ -68,7 +83,7 @@ OR(run this command in the commond line from the folder where your 'video_annota
 - Press **'n'** to move to the next video.
 - Press **'esc'** to close the tool.
 
-3. **Saving Annotations**: Annotations are automatically saved to a JSON file after the user exits the annotation process.
+3. **Saving Annotations**: Annotations are automatically saved to a JSON file after the user exits the annotation process. It will be saved to sepatare folder 'annotations' in the same location as folder with videos
 
 ## Interface
 
