@@ -147,7 +147,7 @@ def get_json_filename(video_filename):
     base_name = base_name.strip(" _-")
     return base_name + ".json"
 
-def merge_annotations(video_path, new_annotations, should_update_audio):
+def merge_annotations(video_path, new_annotations, audio_path, should_update_audio):
     original_video_file = os.path.basename(video_path)
     json_filename = get_json_filename(original_video_file)
 
@@ -161,6 +161,9 @@ def merge_annotations(video_path, new_annotations, should_update_audio):
             existing_data = json.load(f)
 
     existing_data["video_file"] = original_video_file
+    if should_update_audio:
+        existing_data['audio_file'] = os.path.basename(audio_path)
+        
     if "video_annotations" not in existing_data:
         existing_data["video_annotations"] = {}
     if "audio_annotations" not in existing_data and should_update_audio:
@@ -394,8 +397,10 @@ def annotate_video(video_path, audio_path, labelled_position_path, audio_channel
     cv2.destroyAllWindows()
 
     if annotations:
-        should_update_audio = durations_match(total_frames, audio_sr, audio_data)
-        merge_annotations(video_path, annotations, should_update_audio)
+        should_update_audio = False
+        if audio_path is not None and os.path.exists(audio_path):
+            should_update_audio = durations_match(total_frames, audio_sr, audio_data)
+        merge_annotations(video_path, annotations, audio_path, should_update_audio)
     else:
         print(f"No annotations made for {video_path}.")
 
