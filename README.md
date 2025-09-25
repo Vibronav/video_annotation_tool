@@ -74,10 +74,11 @@ OR(run this command in the commond line from the folder where your 'video_annota
 - Press **'2'** to mark the event E2.
 - Press **'3'** to mark the event E3.
 - Press **'4'** to mark the event E4.
-- Press **'5'** to use the exist event E1 as new E1.
-- Press **'6'** to use the exist event E2 as new E2.
-- Press **'7'** to use the exist event E3 as new E3.
-- Press **'8'** to use the exist event E4 as new E4.
+- Press **'5'** to mark the event E5.
+- Press **'6'** to mark the event E6.
+- Press **'7'** to mark the event E7.
+- Press **'8'** to mark the event E8.
+- Press **'crtl + 1-8'** to use the exist event E1-E8 as new E1-E8
 - Press **'c'** to clear all annotations.
 - Use **'a'** and **'d'** to navigate backward and forward in the video when paused.
 - Press **'n'** to move to the next video.
