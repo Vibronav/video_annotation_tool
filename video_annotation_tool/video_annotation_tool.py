@@ -198,13 +198,6 @@ def merge_annotations(video_path, new_annotations, audio_path, should_update_aud
         existing_data["audio_annotations"] = {}
 
     for k, v in new_annotations.items():
-        if k in existing_data["video_annotations"]:
-            if v["frame"] is None or v["time"] is None:
-                del existing_data["video_annotations"][k]
-        if k in existing_data["audio_annotations"] and should_update_audio:
-            if v["sample"] is None:
-                del existing_data["audio_annotations"][k]
-
         if v["frame"] is not None and v["time"] is not None:
             existing_data["video_annotations"][k] = {"time": v["time"], "frame": v["frame"]}
 
