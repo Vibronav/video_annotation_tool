@@ -9,6 +9,34 @@ import matplotlib.pyplot as plt
 import numpy as np
 import cv2
 import pandas as pd
+from pynput import keyboard
+
+ctrl_pressed = False
+event_key = None
+def _on_press(key):
+    try:
+        if key in (keyboard.Key.ctrl_l, keyboard.Key.ctrl_r):
+            global ctrl_pressed
+            ctrl_pressed = True
+        else:
+            global event_key
+            if hasattr(key, 'char') and key.char is not None:
+                event_key = key.char
+            elif hasattr(key, 'vk'):
+                event_key = chr(key.vk)
+    except Exception as e:
+        print(f"Error in key press: {e}")
+
+def _on_release(key):
+    try:
+        if key in (keyboard.Key.ctrl_l, keyboard.Key.ctrl_r):
+            global ctrl_pressed
+            ctrl_pressed = False
+        else:
+            global event_key
+            event_key = None
+    except Exception as e:
+        print(f"Error in key release: {e}")
 
 def read_wave(path):
     sample_rate, x = wavfile.read(path)
@@ -170,11 +198,11 @@ def merge_annotations(video_path, new_annotations, audio_path, should_update_aud
         existing_data["audio_annotations"] = {}
 
     for k, v in new_annotations.items():
-        if v["frame"] is None or v["time"] is None:
-            if k in existing_data["video_annotations"]:
+        if k in existing_data["video_annotations"]:
+            if v["frame"] is None or v["time"] is None:
                 del existing_data["video_annotations"][k]
-        if v["sample"] is None and should_update_audio:
-            if k in existing_data["audio_annotations"]:
+        if k in existing_data["audio_annotations"] and should_update_audio:
+            if v["sample"] is None:
                 del existing_data["audio_annotations"][k]
 
         if v["frame"] is not None and v["time"] is not None:
@@ -189,9 +217,16 @@ def merge_annotations(video_path, new_annotations, audio_path, should_update_aud
         json.dump(existing_data, f, indent=4)
         print(f"Annotations for {video_path} updated in {json_path}.")
 
-def update_annotations(annotations, *frames_times):
-    for i, (frame, time, sample_rate) in enumerate(frames_times, start=1):
-        annotations[str(i)] = {"frame": frame, "time": time, "sample": time * sample_rate}
+def update_annotations(annotations, event_number, annotation):
+    print(f"Event {event_number} annotated at frame {annotation[0]}, time {annotation[1]:.2f}s")
+    frame = annotation[0]
+    time = annotation[1]
+    sample = time * annotation[2] if annotation[2] is not None else None
+    annotations[str(event_number)] = {
+        "frame": frame,
+        "time": time,
+        "sample": sample
+    }
 
 zoom_level = 1.0
 zoom_center = None
@@ -235,7 +270,7 @@ def mouse_callback(event, x, y, flags, param):
             get_zoomed_frame('Video Annotation', last_frame, zoom_level, zoom_center)
 
 def annotate_video(video_path, audio_path, labelled_position_path, audio_channel):
-    global zoom_level, zoom_center, last_frame
+    global zoom_level, zoom_center, last_frame, ctrl_pressed, event_key
     mp4_path = convert_video_to_h264(video_path)
     cap = cv2.VideoCapture(mp4_path)
 
@@ -259,24 +294,26 @@ def annotate_video(video_path, audio_path, labelled_position_path, audio_channel
     cv2.setMouseCallback('Video Annotation', mouse_callback)
 
     annotations = {}
-    e1_frame = e2_frame = e3_frame = e4_frame = None
+    e1_frame = e2_frame = e3_frame = e4_frame = e5_frame = e6_frame = e7_frame = e8_frame = None
     paused = False
     frame_buffer = []
     key_pressed = None
     quit_app = False
 
     json_filename = get_json_filename(os.path.basename(video_path))
-    json_path = os.path.join(os.path.dirname(video_path), json_filename)
+    parent_folder = os.path.dirname(os.path.dirname(video_path))
+    annotations_folder = os.path.join(parent_folder, "annotations")
+    json_path = os.path.join(annotations_folder, json_filename)
     existing_annotations_title = ""
-    existing_annotations = {}
+    video_existing_annotations = {}
 
     if os.path.exists(json_path):
         with open(json_path, 'r', encoding='utf-8') as f:
             existing_data = json.load(f)
             if "video_annotations" in existing_data:
-                existing_annotations = existing_data["video_annotations"]
+                video_existing_annotations = existing_data["video_annotations"]
                 existing_annotations_title = " | Existing :"
-                for key, value in existing_annotations.items():
+                for key, value in video_existing_annotations.items():
                     frame = value.get("frame")
                     time = value.get("time")
                     if frame is not None and time is not None:
@@ -343,38 +380,78 @@ def annotate_video(video_path, audio_path, labelled_position_path, audio_channel
         elif key == ord('r'):  # Reset zoom
             zoom_level = 1.0
             zoom_center = None
-        elif key == ord('1'):
+        elif key == ord('1') and not ctrl_pressed:
             e1_frame = frame_index; e1_time = time_in_seconds
             if e2_frame is not None and e1_frame > e2_frame:
-                e2_frame = e3_frame = e4_frame = None
-        elif key == ord('2') and e1_frame is not None:
+                e2_frame = e3_frame = e4_frame = e5_frame = e6_frame = e7_frame = e8_frame = None
+            update_annotations(annotations, 1, (e1_frame, e1_time, audio_sr))
+        elif key == ord('2') and not ctrl_pressed and e1_frame is not None:
             e2_frame = frame_index; e2_time = time_in_seconds
             if e2_frame < e1_frame:
-                e2_frame = e3_frame = e4_frame = None
-        elif key == ord('3') and e2_frame is not None:
+                e2_frame = e3_frame = e4_frame = e5_frame = e6_frame = e7_frame = e8_frame = None
+            update_annotations(annotations, 2, (e2_frame, e2_time, audio_sr))
+        elif key == ord('3') and not ctrl_pressed and e2_frame is not None:
             e3_frame = frame_index; e3_time = time_in_seconds
             if e3_frame < e2_frame:
-                e3_frame = None
-        elif key == ord('4') and e3_frame is not None:
+                e3_frame = e4_frame = e5_frame = e6_frame = e7_frame = e8_frame = None
+            update_annotations(annotations, 3, (e3_frame, e3_time, audio_sr))
+        elif key == ord('4') and not ctrl_pressed and e3_frame is not None:
             e4_frame = frame_index; e4_time = time_in_seconds
             if e4_frame < e3_frame:
-                e4_frame = None
-            update_annotations(annotations, (e1_frame, e1_time, audio_sr), (e2_frame, e2_time, audio_sr), (e3_frame, e3_time, audio_sr), (e4_frame, e4_time, audio_sr))
-        elif key == ord('5') and "1" in existing_annotations:
-            e1_frame = existing_annotations["1"]["frame"]; e1_time = existing_annotations["1"]["time"]
-        elif key == ord('6') and "2" in existing_annotations:
-            e2_frame = existing_annotations["2"]["frame"]; e2_time = existing_annotations["2"]["time"]
-        elif key == ord('7') and "3" in existing_annotations:
-            e3_frame = existing_annotations["3"]["frame"]; e3_time = existing_annotations["3"]["time"]
-        elif key == ord('8') and "4" in existing_annotations:
-            e4_frame = existing_annotations["4"]["frame"]; e4_time = existing_annotations["4"]["time"]
-            update_annotations(annotations, (e1_frame, e1_time, audio_sr), (e2_frame, e2_time, audio_sr), (e3_frame, e3_time, audio_sr), (e4_frame, e4_time, audio_sr))
+                e4_frame = e5_frame = e6_frame = e7_frame = e8_frame = None
+            update_annotations(annotations, 4, (e4_frame, e4_time, audio_sr))
+        elif key == ord('5') and not ctrl_pressed and e4_frame is not None:
+            e5_frame = frame_index; e5_time = time_in_seconds
+            if e5_frame < e4_frame:
+                e5_frame = e6_frame = e7_frame = e8_frame = None
+            update_annotations(annotations, 5, (e5_frame, e5_time, audio_sr))
+        elif key == ord('6') and not ctrl_pressed and e5_frame is not None:
+            e6_frame = frame_index; e6_time = time_in_seconds
+            if e6_frame < e5_frame:
+                e6_frame = e7_frame = e8_frame = None
+            update_annotations(annotations, 6, (e6_frame, e6_time, audio_sr))
+        elif key == ord('7') and not ctrl_pressed and e6_frame is not None:
+            e7_frame = frame_index; e7_time = time_in_seconds
+            if e7_frame < e6_frame:
+                e7_frame = e8_frame = None
+            update_annotations(annotations, 7, (e7_frame, e7_time, audio_sr))
+        elif key == ord('8') and not ctrl_pressed and e7_frame is not None:
+            e8_frame = frame_index; e8_time = time_in_seconds
+            if e8_frame < e7_frame:
+                e8_frame = None
+            update_annotations(annotations, 8, (e8_frame, e8_time, audio_sr))
+
+        elif event_key == '1' and ctrl_pressed and "1" in video_existing_annotations:
+            print("Restoring event 1 from existing annotations")
+            e1_frame = video_existing_annotations["1"]["frame"]; e1_time = video_existing_annotations["1"]["time"]
+            update_annotations(annotations, 1, (e1_frame, e1_time, audio_sr))
+        elif event_key == '2' and ctrl_pressed and "2" in video_existing_annotations:
+            e2_frame = video_existing_annotations["2"]["frame"]; e2_time = video_existing_annotations["2"]["time"]
+            update_annotations(annotations, 2, (e2_frame, e2_time, audio_sr))
+        elif event_key == '3' and ctrl_pressed and "3" in video_existing_annotations:
+            e3_frame = video_existing_annotations["3"]["frame"]; e3_time = video_existing_annotations["3"]["time"]
+            update_annotations(annotations, 3, (e3_frame, e3_time, audio_sr))
+        elif event_key == '4' and ctrl_pressed and "4" in video_existing_annotations:
+            e4_frame = video_existing_annotations["4"]["frame"]; e4_time = video_existing_annotations["4"]["time"]
+            update_annotations(annotations, 4, (e4_frame, e4_time, audio_sr))
+        elif event_key == '5' and ctrl_pressed and "5" in video_existing_annotations:
+            e5_frame = video_existing_annotations["5"]["frame"]; e5_time = video_existing_annotations["5"]["time"]
+            update_annotations(annotations, 5, (e5_frame, e5_time, audio_sr))
+        elif event_key == '6' and ctrl_pressed and "6" in video_existing_annotations:
+            e6_frame = video_existing_annotations["6"]["frame"]; e6_time = video_existing_annotations["6"]["time"]
+            update_annotations(annotations, 6, (e6_frame, e6_time, audio_sr))
+        elif event_key == '7' and ctrl_pressed and "7" in video_existing_annotations:
+            e7_frame = video_existing_annotations["7"]["frame"]; e7_time = video_existing_annotations["7"]["time"]
+            update_annotations(annotations, 7, (e7_frame, e7_time, audio_sr))
+        elif event_key == '8' and ctrl_pressed and "8" in video_existing_annotations:
+            e8_frame = video_existing_annotations["8"]["frame"]; e8_time = video_existing_annotations["8"]["time"]
+            update_annotations(annotations, 8, (e8_frame, e8_time, audio_sr))
         elif key == ord('n'):
             break
         elif key == ord('c'):
-            e1_frame = e2_frame = e3_frame = e4_frame = None
-            e1_time = e2_time = e3_time = e4_time = None
-            update_annotations(annotations, (e1_frame, e1_time, audio_sr), (e2_frame, e2_time, audio_sr), (e3_frame, e3_time, audio_sr), (e4_frame, e4_time, audio_sr))
+            e1_frame = e2_frame = e3_frame = e4_frame = e5_frame = e6_frame = e7_frame = e8_frame = None
+            e1_time = e2_time = e3_time = e4_time = e5_time = e6_time = e7_time = e8_time = None
+            annotations.clear()
 
         if key == ord('a'): key_pressed = 'a'
         elif key == ord('d'): key_pressed = 'd'
@@ -439,6 +516,10 @@ def main():
     audio_path = args.audio_path
     labelled_position_path = args.velocity_path
     audio_channel = args.audio_channel
+
+    keyboard_listener = keyboard.Listener(on_press=_on_press, on_release=_on_release)
+    keyboard_listener.daemon = True
+    keyboard_listener.start()
 
     process_videos_in_folder(video_path, audio_path, labelled_position_path, audio_channel)
 
