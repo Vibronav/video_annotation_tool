@@ -64,8 +64,6 @@ options:
                         Audio channel to use for waveform (default: 0)
 ```
 
-OR(run this command in the commond line from the folder where your 'video_annotation_tool.py' script is located.)
-
 ```python video_annotation_tool.py "your videos folder path"```
 
 2. **Controls**:
