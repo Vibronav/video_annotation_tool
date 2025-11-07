@@ -64,7 +64,6 @@ options:
                         Audio channel to use for waveform (default: 0)
 ```
 
-```python video_annotation_tool.py "your videos folder path"```
 
 2. **Controls**:
 - Press the **'Space'** key to toggle between pause and play.
