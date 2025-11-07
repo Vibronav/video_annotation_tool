@@ -48,7 +48,7 @@ If the installation is successful, you will see something like the following:
 1. **Run Code**: Execute the code using the command line interface (CLI).
 
 ```
-usage: video_annotation_tool.py [-h] [--video-path VIDEO_PATH] [--audio-path AUDIO_PATH] [--velocity-path VELOCITY_PATH] [--audio-channel AUDIO_CHANNEL]                                                                   
+usage: video_annotation_tool [-h] [--video-path VIDEO_PATH] [--audio-path AUDIO_PATH] [--velocity-path VELOCITY_PATH] [--audio-channel AUDIO_CHANNEL]                                                                   
 
 Annotate time instants in videos in a folder.
 
