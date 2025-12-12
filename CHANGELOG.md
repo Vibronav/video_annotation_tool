@@ -37,3 +37,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Waveform plot
 - Velocity plot
 - audio annotations when data synchronized
+
+## [0.6.1] - 2024-06-20
+### Fixed
+- Add units to velocity plot
