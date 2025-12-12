@@ -94,6 +94,10 @@ def build_velocity_image(labelled_positions_path, width, height, bg=(255, 255, 2
     
     df = pd.read_csv(labelled_positions_path)
 
+    # Required check because of legacy files
+    if 'velocity_cm/s' in df.columns:
+        df['velocity'] = df['velocity_cm/s']
+
     velocity_original = df['velocity'].copy()
     df['velocity'] = df['velocity'].rolling(window=3, center=True).mean()
     df['velocity'] = df['velocity'].fillna(velocity_original)
@@ -101,8 +105,10 @@ def build_velocity_image(labelled_positions_path, width, height, bg=(255, 255, 2
     frames = df['Frame'].to_numpy(dtype=np.int64)
     velocities = df['velocity'].fillna(0).to_numpy(dtype=np.float32)
 
-    vmax = float(np.nanmax(np.abs(velocities)))
-    v_norm = np.clip(velocities / vmax, -1.0, 1.0)
+    v_max = np.nanmax(velocities)
+    v_min = np.nanmin(velocities)
+    v_abs_max = float(np.nanmax(np.abs(velocities)))
+    v_norm = np.clip(velocities / v_abs_max, -1.0, 1.0)
 
     total_frames = frames.shape[0]
     pts = []
@@ -114,6 +120,20 @@ def build_velocity_image(labelled_positions_path, width, height, bg=(255, 255, 2
     cv2.line(img, (0, height // 2), (width - 1, height // 2), axis, 1)
 
     cv2.polylines(img, [np.array(pts, dtype=np.int32)], False, line, 1)
+
+    font = cv2.FONT_HERSHEY_SIMPLEX
+    font_scale = 0.3
+    font_color = (50, 100, 50)
+    thickness = 1
+    margin_left = 5
+
+    label_top = f"{v_max:.1f} cm/s"
+    label_center = "0 cm/s"
+    label_bottom = f"{v_min:.1f} cm/s"
+
+    cv2.putText(img, label_top, (margin_left, 15), font, font_scale, font_color, thickness)
+    cv2.putText(img, label_center, (margin_left, height // 2 - 5), font, font_scale, font_color, thickness)
+    cv2.putText(img, label_bottom, (margin_left, height - 5), font, font_scale, font_color, thickness)
 
     return img
 
