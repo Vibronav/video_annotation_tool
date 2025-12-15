@@ -82,7 +82,7 @@ def build_waveform_image(audio_signal, sr, width, height, audio_channel, bg=(24,
     return img
 
 def build_spectrogram_image(audio_signal, sr, width, height, audio_channel,
-                            bg=(24, 24, 24), fg=(230, 230, 230),
+                            bg=(24, 24, 24),
                             nfft=1024, noverlap=768, max_freq=None):
     if audio_signal is None or sr is None:
         return np.full((height, width, 3), bg, dtype=np.uint8)
@@ -105,7 +105,8 @@ def build_spectrogram_image(audio_signal, sr, width, height, audio_channel,
         Fs=sr,
         noverlap=noverlap,
         scale='dB',
-        mode='psd'
+        mode='magnitude',
+        window=np.hanning(nfft),
     )
 
     if max_freq is not None:
