@@ -38,6 +38,10 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Velocity plot
 - audio annotations when data synchronized
 
-## [0.6.1] - 2024-06-20
+## [0.6.1] - 2024-12-06
 ### Fixed
 - Add units to velocity plot
+
+## [0.6.2] - 2024-12-15
+### Fixed
+- Fix new videos handling bug
