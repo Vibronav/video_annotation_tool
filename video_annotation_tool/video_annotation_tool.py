@@ -13,6 +13,12 @@ from pynput import keyboard
 
 ctrl_pressed = False
 event_key = None
+show_mode = 1 # 0=waveform, 1=spectrogram
+
+def _on_mode_change(key):
+    global show_mode
+    show_mode = int(key)
+
 def _on_press(key):
     try:
         if key in (keyboard.Key.ctrl_l, keyboard.Key.ctrl_r):
@@ -74,6 +80,47 @@ def build_waveform_image(audio_signal, sr, width, height, audio_channel, bg=(24,
         cv2.line(img, (x, y_min), (x, y_max), fg, 1)
 
     return img
+
+def build_spectrogram_image(audio_signal, sr, width, height, audio_channel,
+                            bg=(24, 24, 24), fg=(230, 230, 230),
+                            nfft=1024, noverlap=768, max_freq=None):
+    if audio_signal is None or sr is None:
+        return np.full((height, width, 3), bg, dtype=np.uint8)
+
+    x = audio_signal[audio_channel, :].astype(np.float32)
+
+    dpi = 100
+    fig_w = max(1, int(width)) / dpi
+    fig_h = max(1, int(height)) / dpi
+    fig = plt.Figure(figsize=(fig_w, fig_h), dpi=dpi)
+    canvas = FigureCanvasAgg(fig)
+    ax = fig.add_axes([0, 0, 1, 1])
+
+    fig.patch.set_facecolor(np.array(bg) / 255.0)
+    ax.set_facecolor(np.array(bg) / 255.0)
+
+    ax.specgram(
+        x,
+        NFFT=nfft,
+        Fs=sr,
+        noverlap=noverlap,
+        scale='dB',
+        mode='psd'
+    )
+
+    if max_freq is not None:
+        ax.set_ylim(0, max_freq)
+    else:
+        ax.set_ylim(0, sr / 2)
+
+    ax.set_axis_off()
+
+    canvas.draw()
+    buf = np.frombuffer(canvas.buffer_rgba(), dtype=np.uint8)
+    img_rgba = buf.reshape(int(height), int(width), 4)
+    img_bgr = cv2.cvtColor(img_rgba, cv2.COLOR_RGBA2BGR)
+
+    return img_bgr
 
 def draw_playhead(img, position, max_position):
     h, w = img.shape[:2]
@@ -305,6 +352,7 @@ def annotate_video(video_path, audio_path, labelled_position_path, audio_channel
 
     cv2.namedWindow('Video Annotation')
     cv2.setMouseCallback('Video Annotation', mouse_callback)
+    cv2.createTrackbar('Mode: 0 Wave | 1 Spec', 'Video Annotation', show_mode, 1, _on_mode_change)
 
     annotations = {}
     e1_frame = e2_frame = e3_frame = e4_frame = e5_frame = e6_frame = e7_frame = e8_frame = None
@@ -349,6 +397,7 @@ def annotate_video(video_path, audio_path, labelled_position_path, audio_channel
     velocity_h = 140
 
     base_waveform = build_waveform_image(audio_data, audio_sr, vw, waveform_h, audio_channel)
+    base_spectrogram = build_spectrogram_image(audio_data, audio_sr, vw, waveform_h, audio_channel, nfft=512, noverlap=384, max_freq=None)
     velocity_plot = build_velocity_image(labelled_position_path, vw, velocity_h)
 
     while True:
@@ -369,15 +418,19 @@ def annotate_video(video_path, audio_path, labelled_position_path, audio_channel
 
         display_frame = get_zoomed_frame('Video Annotation', frame, zoom_level, zoom_center)
 
-        wf = base_waveform.copy()
-        draw_playhead(wf, time_in_seconds, audio_duration)
+        mode = cv2.getTrackbarPos('Mode: 0 Wave | 1 Spec', 'Video Annotation')
+        if mode == 0:
+            sp = base_waveform.copy()
+        else:
+            sp = base_spectrogram.copy()
+        draw_playhead(sp, time_in_seconds, audio_duration)
         vel = velocity_plot.copy()
         draw_playhead(vel, frame_index - 1, total_frames - 1)
 
-        if display_frame.shape[1] != wf.shape[1]:
-            wf = cv2.resize(wf, (display_frame.shape[1], wf.shape[0]))
+        if display_frame.shape[1] != sp.shape[1]:
+            sp = cv2.resize(sp, (display_frame.shape[1], sp.shape[0]))
         
-        combined = np.vstack([display_frame, wf, vel])
+        combined = np.vstack([display_frame, sp, vel])
 
         title_text = f'{os.path.basename(video_path)} | {frame_index}({time_in_seconds:.2f}s){existing_annotations_title}'
         if e1_frame is not None:
