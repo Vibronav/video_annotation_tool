@@ -45,3 +45,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ## [0.6.2] - 2024-12-15
 ### Fixed
 - Fix new videos handling bug
+
+## [0.7.0] - 2024-12-15
+### Added
+- Spectrogram plot
+- Selection real-time between spectrogram and waveform
