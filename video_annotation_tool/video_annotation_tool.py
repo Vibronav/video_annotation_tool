@@ -382,18 +382,11 @@ def annotate_video(video_path, audio_path, labelled_position_path, audio_channel
                     if frame is not None and time is not None:
                         existing_annotations_title += f" {key}: F(T): {frame}({time:.2f}s)"
 
-    ret, frame = cap.read()
-    if not ret:
-        print("Error: Could not read the first frame.")
-        cap.release()
-        return
-    
+
     fps = cap.get(cv2.CAP_PROP_FPS) or 30
-    frame_buffer.append(frame.copy())
     buf_i = 0
     total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-    last_frame = frame.copy()
-    vh, vw = frame.shape[:2]
+    vh, vw = (int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)), int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)))
     waveform_h = 140
     velocity_h = 140
 
@@ -402,17 +395,25 @@ def annotate_video(video_path, audio_path, labelled_position_path, audio_channel
     velocity_plot = build_velocity_image(labelled_position_path, vw, velocity_h)
 
     while True:
-        if not paused:
+
+        if not frame_buffer:
             ret, frame = cap.read()
             if not ret:
-                cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
-                continue
-            last_frame = frame.copy()
+                break
             frame_buffer.append(frame)
-            buf_i = len(frame_buffer) - 1
-        else:
-            frame = frame_buffer[buf_i]
-            last_frame = frame.copy()
+
+        if not paused:
+            if buf_i < len(frame_buffer) - 1:
+                buf_i += 1
+            else:
+                ret, frame = cap.read()
+                if not ret:
+                    break
+                frame_buffer.append(frame)
+                buf_i += 1
+
+        frame = frame_buffer[buf_i]
+        last_frame = frame.copy()
 
         frame_index = buf_i
         time_in_seconds = frame_index / fps
@@ -535,19 +536,14 @@ def annotate_video(video_path, audio_path, labelled_position_path, audio_channel
         if key_pressed == 'a' and paused:
             if buf_i > 0:
                 buf_i -= 1
-                frame = frame_buffer[buf_i]
-                last_frame = frame.copy()
         elif key_pressed == 'd' and paused:
             if buf_i < len(frame_buffer) - 1:
                 buf_i += 1
-                frame = frame_buffer[buf_i]
-                last_frame = frame.copy()
             else:
                 ret, frame = cap.read()
                 if ret:
                     frame_buffer.append(frame.copy())
                     buf_i += 1
-                    last_frame = frame.copy()
 
     cap.release()
     cv2.destroyAllWindows()
