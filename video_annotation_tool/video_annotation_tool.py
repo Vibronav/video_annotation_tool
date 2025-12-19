@@ -427,7 +427,7 @@ def annotate_video(video_path, audio_path, labelled_position_path, audio_channel
             sp = base_spectrogram.copy()
         draw_playhead(sp, time_in_seconds, audio_duration)
         vel = velocity_plot.copy()
-        draw_playhead(vel, frame_index - 1, total_frames - 1)
+        draw_playhead(vel, frame_index, total_frames - 1)
 
         if display_frame.shape[1] != sp.shape[1]:
             sp = cv2.resize(sp, (display_frame.shape[1], sp.shape[0]))
