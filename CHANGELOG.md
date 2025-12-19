@@ -54,3 +54,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ## [0.7.1] - 2024-12-18
 ### Fixed
 - Bug when moving along video
+
+## [0.7.2] - 2024-12-19
+### Fixed
+- Too big window bug

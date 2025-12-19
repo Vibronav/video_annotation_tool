@@ -434,6 +434,9 @@ def annotate_video(video_path, audio_path, labelled_position_path, audio_channel
         
         combined = np.vstack([display_frame, sp, vel])
 
+        current_w, current_h = combined.shape[1], combined.shape[0]
+        combined_disp = cv2.resize(combined, (current_w, int(current_h * 0.9)), interpolation=cv2.INTER_AREA)
+
         title_text = f'{os.path.basename(video_path)} | {frame_index}({time_in_seconds:.2f}s){existing_annotations_title}'
         if e1_frame is not None:
             title_text += f' | New : E1 F(T): {e1_frame}({e1_time:.2f}s)'
@@ -445,7 +448,7 @@ def annotate_video(video_path, audio_path, labelled_position_path, audio_channel
             title_text += f' | E4 F(T): {e4_frame}({e4_time:.2f}s)'
 
         cv2.setWindowTitle('Video Annotation', title_text)
-        cv2.imshow('Video Annotation', combined)
+        cv2.imshow('Video Annotation', combined_disp)
         key = cv2.waitKey(33)
 
         if key == 27:  # ESC
