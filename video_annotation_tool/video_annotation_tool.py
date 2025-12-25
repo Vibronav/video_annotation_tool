@@ -99,15 +99,22 @@ def build_spectrogram_image(audio_signal, sr, width, height, audio_channel,
     fig.patch.set_facecolor(np.array(bg) / 255.0)
     ax.set_facecolor(np.array(bg) / 255.0)
 
-    ax.specgram(
+    Pxx, freqs, bins, im = ax.specgram(
         x,
         NFFT=nfft,
         Fs=sr,
         noverlap=noverlap,
         scale='dB',
-        mode='magnitude',
+        mode='psd',
         window=np.hanning(nfft),
+        cmap='magma'
     )
+
+    db = 10.0 * np.log10(Pxx + 1e-12)
+
+    vmax = np.percentile(db, 99.5)
+    vmin = vmax - 80.0
+    im.set_clim(vmin, vmax)
 
     if max_freq is not None:
         ax.set_ylim(0, max_freq)
