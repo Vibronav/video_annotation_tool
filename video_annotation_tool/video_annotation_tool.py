@@ -57,9 +57,13 @@ def read_wave(path):
 
 def build_waveform_image(audio_signal, sr, width, height, audio_channel, bg=(24, 24, 24), fg=(230, 230, 230)):
 
-    audio_signal = audio_signal[audio_channel, :]
-
     img = np.full((height, width, 3), bg, dtype=np.uint8)
+
+    if audio_signal is None or sr is None:
+        cv2.putText(img, 'No audio data', (10, height // 2), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 255), 2)
+        return img
+
+    audio_signal = audio_signal[audio_channel, :]
 
     samples_per_col = int(np.ceil(audio_signal.shape[0] / width))
     mid_y = height // 2
@@ -85,7 +89,9 @@ def build_spectrogram_image(audio_signal, sr, width, height, audio_channel,
                             bg=(24, 24, 24),
                             nfft=1024, noverlap=768, max_freq=None):
     if audio_signal is None or sr is None:
-        return np.full((height, width, 3), bg, dtype=np.uint8)
+        img = np.full((height, width, 3), bg, dtype=np.uint8)
+        cv2.putText(img, 'No audio data', (10, height // 2), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 255), 2)
+        return img
 
     x = audio_signal[audio_channel, :].astype(np.float32)
 
@@ -432,13 +438,15 @@ def annotate_video(video_path, audio_path, labelled_position_path, audio_channel
             sp = base_waveform.copy()
         else:
             sp = base_spectrogram.copy()
-        draw_playhead(sp, time_in_seconds, audio_duration)
+        if audio_duration > 0:
+            draw_playhead(sp, time_in_seconds, audio_duration)
         vel = velocity_plot.copy()
-        draw_playhead(vel, frame_index, total_frames - 1)
+        if labelled_position_path and os.path.exists(labelled_position_path):
+            draw_playhead(vel, frame_index, total_frames - 1)
 
         if display_frame.shape[1] != sp.shape[1]:
             sp = cv2.resize(sp, (display_frame.shape[1], sp.shape[0]))
-        
+
         combined = np.vstack([display_frame, sp, vel])
 
         current_w, current_h = combined.shape[1], combined.shape[0]
@@ -579,7 +587,7 @@ def process_videos_in_folder(video_path, audio_path, labelled_position_path, aud
     for video_file in videos:
         file_basename, ext = os.path.splitext(video_file)
         video_file_path = os.path.join(video_path, file_basename + ext)
-        audio_file_path = os.path.join(audio_path, file_basename + '.wav')
+        audio_file_path = os.path.join(audio_path, file_basename + '.wav') if audio_path else None
         labelled_position_file_path = os.path.join(labelled_position_path, file_basename + '.csv') if labelled_position_path else None
         quit_app = annotate_video(video_file_path, audio_file_path, labelled_position_file_path, audio_channel)
         if quit_app:
