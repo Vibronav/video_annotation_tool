@@ -38,27 +38,31 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Velocity plot
 - audio annotations when data synchronized
 
-## [0.6.1] - 2024-12-06
+## [0.6.1] - 2025-12-06
 ### Fixed
 - Add units to velocity plot
 
-## [0.6.2] - 2024-12-15
+## [0.6.2] - 2025-12-15
 ### Fixed
 - Fix new videos handling bug
 
-## [0.7.0] - 2024-12-15
+## [0.7.0] - 2025-12-15
 ### Added
 - Spectrogram plot
 - Selection real-time between spectrogram and waveform
 
-## [0.7.1] - 2024-12-18
+## [0.7.1] - 2025-12-18
 ### Fixed
 - Bug when moving along video
 
-## [0.7.2] - 2024-12-19
+## [0.7.2] - 2025-12-19
 ### Fixed
 - Too big window bug
 
-## [0.7.3] - 2024-12-19
+## [0.7.3] - 2025-12-19
 ### Fixed
 - Enhance spectrogram appearance
+
+## [0.7.4] - 2026-04-11
+### Changed
+- Make audio files optional
