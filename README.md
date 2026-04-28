@@ -79,16 +79,19 @@ options:
 - Press **'c'** to clear all annotations.
 - Use **'a'** and **'d'** to navigate backward and forward in the video when paused.
 - Press **'n'** to move to the next video.
+- Press **'p'** to go back to the previous video.
+- Press **'r'** to reset zoom.
+- Use **mouse scroll** to zoom in/out on the video.
+- Use the **Speed (0-100%)** slider to control playback speed (100 = normal, lower = slower).
+- Use the **Mode** slider to switch between waveform and spectrogram display.
 - Press **'esc'** to close the tool.
+
+Note: When the video reaches the last frame, playback will automatically pause instead of advancing to the next file. This allows you to annotate events near the end of the video.
 
 3. **Saving Annotations**: Annotations are automatically saved to a JSON file after the user exits the annotation process. It will be saved to sepatare folder 'annotations' in the same location as folder with videos
 
 ## Interface
 
-1. **Windows Title**: In the opened video window title, you will see the current video name, frame and seconds, along with annotations from the previous video if available. Additionally, any new video annotations, if added, will be visible.Existing belongs to the previous annotations. New for the new annotations."F" corresponds Frame ,"T" corresponds Time.
+1. **Windows Title**: In the opened video window title, you will see the current video name, frame and seconds, along with annotations from the previous video if available. All 8 events (E1-E8) are displayed in the title bar when annotated. Additionally, any new video annotations, if added, will be visible. Existing belongs to the previous annotations. New for the new annotations. "F" corresponds Frame, "T" corresponds Time.
 
 ![image](https://github.com/OranHamza/video_annotation_tool/assets/127665894/d157ab45-d45c-4261-a52f-cc72019ff558)
-
-
-
-
