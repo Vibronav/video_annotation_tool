@@ -367,6 +367,7 @@ def annotate_video(video_path, audio_path, labelled_position_path, audio_channel
     cv2.namedWindow('Video Annotation')
     cv2.setMouseCallback('Video Annotation', mouse_callback)
     cv2.createTrackbar('Mode: 0 Wave | 1 Spec', 'Video Annotation', show_mode, 1, _on_mode_change)
+    cv2.createTrackbar('Speed (0-100%)', 'Video Annotation', 100, 100, lambda x: None)
 
     annotations = {}
     e1_frame = e2_frame = e3_frame = e4_frame = e5_frame = e6_frame = e7_frame = e8_frame = None
@@ -375,6 +376,7 @@ def annotate_video(video_path, audio_path, labelled_position_path, audio_channel
     buf_i = -1
     key_pressed = None
     quit_app = False
+    go_prev = False
 
     json_filename = get_json_filename(os.path.basename(video_path))
     parent_folder = os.path.dirname(os.path.dirname(video_path))
@@ -409,10 +411,15 @@ def annotate_video(video_path, audio_path, labelled_position_path, audio_channel
 
     while True:
 
+        if cv2.getWindowProperty('Video Annotation', cv2.WND_PROP_VISIBLE) < 1:
+            quit_app = True
+            break
+
         if not frame_buffer:
             ret, frame = cap.read()
             if not ret:
-                break
+                paused = True
+                continue
             frame_buffer.append(frame)
 
         if not paused:
@@ -421,9 +428,10 @@ def annotate_video(video_path, audio_path, labelled_position_path, audio_channel
             else:
                 ret, frame = cap.read()
                 if not ret:
-                    break
-                frame_buffer.append(frame)
-                buf_i += 1
+                    paused = True
+                else:
+                    frame_buffer.append(frame)
+                    buf_i += 1
 
         frame = frame_buffer[buf_i]
         last_frame = frame.copy()
@@ -461,10 +469,20 @@ def annotate_video(video_path, audio_path, labelled_position_path, audio_channel
             title_text += f' | E3 F(T): {e3_frame}({e3_time:.2f}s)'
         if e4_frame is not None and e3_frame is not None and e3_frame<=e4_frame and e2_frame<=e3_frame:
             title_text += f' | E4 F(T): {e4_frame}({e4_time:.2f}s)'
+        if e5_frame is not None and e4_frame is not None and e4_frame<=e5_frame:
+            title_text += f' | E5 F(T): {e5_frame}({e5_time:.2f}s)'
+        if e6_frame is not None and e5_frame is not None and e5_frame<=e6_frame:
+            title_text += f' | E6 F(T): {e6_frame}({e6_time:.2f}s)'
+        if e7_frame is not None and e6_frame is not None and e6_frame<=e7_frame:
+            title_text += f' | E7 F(T): {e7_frame}({e7_time:.2f}s)'
+        if e8_frame is not None and e7_frame is not None and e7_frame<=e8_frame:
+            title_text += f' | E8 F(T): {e8_frame}({e8_time:.2f}s)'
 
         cv2.setWindowTitle('Video Annotation', title_text)
         cv2.imshow('Video Annotation', combined_disp)
-        key = cv2.waitKey(33)
+        speed_val = max(1, cv2.getTrackbarPos('Speed (0-100%)', 'Video Annotation'))
+        wait_ms = int(33 / (speed_val / 100.0))
+        key = cv2.waitKey(wait_ms)
 
         if key == 27:  # ESC
             quit_app = True
@@ -542,6 +560,9 @@ def annotate_video(video_path, audio_path, labelled_position_path, audio_channel
             update_annotations(annotations, 8, (e8_frame, e8_time, audio_sr))
         elif key == ord('n'):
             break
+        elif key == ord('p'):
+            go_prev = True
+            break
         elif key == ord('c'):
             e1_frame = e2_frame = e3_frame = e4_frame = e5_frame = e6_frame = e7_frame = e8_frame = None
             e1_time = e2_time = e3_time = e4_time = e5_time = e6_time = e7_time = e8_time = None
@@ -562,6 +583,8 @@ def annotate_video(video_path, audio_path, labelled_position_path, audio_channel
                 if ret:
                     frame_buffer.append(frame.copy())
                     buf_i += 1
+                else:
+                    paused = True
 
     cap.release()
     cv2.destroyAllWindows()
@@ -577,21 +600,33 @@ def annotate_video(video_path, audio_path, labelled_position_path, audio_channel
     if mp4_path != video_path:
         os.remove(mp4_path)
 
-    return quit_app
+    if quit_app:
+        return 'quit'
+    elif go_prev:
+        return 'prev'
+    else:
+        return 'next'
+
 
 
 def process_videos_in_folder(video_path, audio_path, labelled_position_path, audio_channel):
 
-    videos = [f for f in os.listdir(video_path) if f.lower().endswith(('.mp4', '.webm'))]
+    videos = sorted([f for f in os.listdir(video_path) if f.lower().endswith(('.mp4', '.webm'))])
 
-    for video_file in videos:
+    i = 0
+    while 0 <= i < len(videos):
+        video_file = videos[i]
         file_basename, ext = os.path.splitext(video_file)
         video_file_path = os.path.join(video_path, file_basename + ext)
         audio_file_path = os.path.join(audio_path, file_basename + '.wav') if audio_path else None
         labelled_position_file_path = os.path.join(labelled_position_path, file_basename + '.csv') if labelled_position_path else None
-        quit_app = annotate_video(video_file_path, audio_file_path, labelled_position_file_path, audio_channel)
-        if quit_app:
+        result = annotate_video(video_file_path, audio_file_path, labelled_position_file_path, audio_channel)
+        if result == 'quit':
             break
+        elif result == 'prev':
+            i = max(0, i - 1)
+        else:
+            i += 1
 
 def parse_args():
     parser = argparse.ArgumentParser(description='Annotate time instants in videos in a folder.')
