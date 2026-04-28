@@ -66,3 +66,12 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ## [0.7.4] - 2026-04-11
 ### Changed
 - Make audio files optional
+
+## [0.8.0] - 2026-04-28
+### Added
+- Display all 8 events (E1-E8) in the window title bar
+- Navigate to previous video with 'p' key
+- Playback speed slider (0-100%) for slow-motion review
+### Fixed
+- Video pauses at last frame instead of jumping to next file
+- Crash when closing window with X button
