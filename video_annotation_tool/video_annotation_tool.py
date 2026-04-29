@@ -10,6 +10,7 @@ import numpy as np
 import cv2
 import pandas as pd
 from pynput import keyboard
+from video_annotation_tool.audio_player import AudioPlayer
 
 ctrl_pressed = False
 event_key = None
@@ -409,6 +410,9 @@ def annotate_video(video_path, audio_path, labelled_position_path, audio_channel
     base_spectrogram = build_spectrogram_image(audio_data, audio_sr, vw, waveform_h, audio_channel, nfft=512, noverlap=384, max_freq=None)
     velocity_plot = build_velocity_image(labelled_position_path, vw, velocity_h)
 
+    audio_player = AudioPlayer(audio_data, audio_sr, audio_channel)
+    audio_player.play(0)
+
     while True:
 
         if cv2.getWindowProperty('Video Annotation', cv2.WND_PROP_VISIBLE) < 1:
@@ -489,6 +493,10 @@ def annotate_video(video_path, audio_path, labelled_position_path, audio_channel
             break
         elif key == 32:  # Space pause/play
             paused = not paused
+            if paused:
+                audio_player.pause()
+            else:
+                audio_player.play(time_in_seconds)
         elif key == ord('r'):  # Reset zoom
             zoom_level = 1.0
             zoom_center = None
@@ -575,16 +583,21 @@ def annotate_video(video_path, audio_path, labelled_position_path, audio_channel
         if key_pressed == 'a' and paused:
             if buf_i > 0:
                 buf_i -= 1
+                audio_player.seek(buf_i / fps)
         elif key_pressed == 'd' and paused:
             if buf_i < len(frame_buffer) - 1:
                 buf_i += 1
+                audio_player.seek(buf_i / fps)
             else:
                 ret, frame = cap.read()
                 if ret:
                     frame_buffer.append(frame.copy())
                     buf_i += 1
+                    audio_player.seek(buf_i / fps)
                 else:
                     paused = True
+
+    audio_player.stop()
 
     cap.release()
     cv2.destroyAllWindows()
