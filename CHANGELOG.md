@@ -75,3 +75,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ### Fixed
 - Video pauses at last frame instead of jumping to next file
 - Crash when closing window with X button
+
+## [0.8.1] - 2026-04-30
+### Added
+- Play audio sound
