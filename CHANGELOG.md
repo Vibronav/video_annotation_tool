@@ -79,3 +79,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ## [0.8.1] - 2026-04-30
 ### Added
 - Play audio sound
+
+## [0.8.2] - 2026-05-05
+### Changed
+- Make window size adaptive
+- UI controlls
