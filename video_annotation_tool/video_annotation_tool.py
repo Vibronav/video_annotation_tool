@@ -12,9 +12,21 @@ import pandas as pd
 from pynput import keyboard
 from video_annotation_tool.audio_player import AudioPlayer
 
+WINDOW_NAME = 'Video Annotation'
+MAX_WINDOW_WIDTH = 1600
+MAX_WINDOW_HEIGHT = 1200
+WINDOW_HORIZONTAL_MARGIN = 40
+WINDOW_VERTICAL_MARGIN = 80
+WINDOW_CHROME_HEIGHT_ALLOWANCE = 100
+MAX_CONTENT_HEIGHT_SCREEN_FRACTION = 0.75
+CONTROL_BAR_HEIGHT = 48
+DEFAULT_PLOT_HEIGHT = 140
+MIN_PLOT_HEIGHT = 48
+
 ctrl_pressed = False
 event_key = None
 show_mode = 1 # 0=waveform, 1=spectrogram
+playback_speed = 100
 
 def _on_mode_change(key):
     global show_mode
@@ -55,6 +67,77 @@ def read_wave(path):
     if len(x.shape) == 1:
         x = x[None, :]
     return sample_rate, x
+
+def get_screen_size(default=(1280, 720)):
+    try:
+        if os.name == 'nt':
+            import ctypes
+
+            ctypes.windll.user32.SetProcessDPIAware()
+
+            class RECT(ctypes.Structure):
+                _fields_ = [
+                    ('left', ctypes.c_long),
+                    ('top', ctypes.c_long),
+                    ('right', ctypes.c_long),
+                    ('bottom', ctypes.c_long),
+                ]
+
+            rect = RECT()
+            SPI_GETWORKAREA = 0x0030
+            if ctypes.windll.user32.SystemParametersInfoW(SPI_GETWORKAREA, 0, ctypes.byref(rect), 0):
+                return rect.right - rect.left, rect.bottom - rect.top
+    except Exception:
+        pass
+
+    try:
+        import tkinter as tk
+
+        root = tk.Tk()
+        root.withdraw()
+        root.update_idletasks()
+        screen_size = root.winfo_screenwidth(), root.winfo_screenheight()
+        root.destroy()
+        return screen_size
+    except Exception:
+        return default
+
+def calculate_display_layout(video_width, video_height):
+    screen_w, screen_h = get_screen_size()
+    available_w = max(1, screen_w - 2 * WINDOW_HORIZONTAL_MARGIN)
+    available_h = max(1, screen_h - 2 * WINDOW_VERTICAL_MARGIN)
+    max_content_w = min(MAX_WINDOW_WIDTH, available_w)
+    max_window_h = min(MAX_WINDOW_HEIGHT, available_h)
+    max_content_h = min(
+        max(1, max_window_h - WINDOW_CHROME_HEIGHT_ALLOWANCE),
+        max(1, int(available_h * MAX_CONTENT_HEIGHT_SCREEN_FRACTION)),
+    )
+
+    aspect = video_width / max(1, video_height)
+    min_plot_h = min(MIN_PLOT_HEIGHT, max(1, max_content_h // 4))
+    plot_h = min(DEFAULT_PLOT_HEIGHT, max(min_plot_h, int(max_content_h * 0.12)))
+    available_video_h = max(1, max_content_h - 2 * plot_h - CONTROL_BAR_HEIGHT)
+
+    target_w = min(video_width, max_content_w)
+    target_h = int(round(target_w / aspect))
+
+    if target_h > available_video_h:
+        target_h = available_video_h
+        target_w = int(round(target_h * aspect))
+
+    target_w = max(1, int(target_w))
+    target_h = max(1, int(target_h))
+
+    return {
+        'video_width': target_w,
+        'video_height': target_h,
+        'plot_width': target_w,
+        'waveform_height': plot_h,
+        'velocity_height': plot_h,
+        'control_height': CONTROL_BAR_HEIGHT,
+        'content_width': target_w,
+        'content_height': target_h + CONTROL_BAR_HEIGHT + 2 * plot_h,
+    }
 
 def build_waveform_image(audio_signal, sr, width, height, audio_channel, bg=(24, 24, 24), fg=(230, 230, 230)):
 
@@ -306,12 +389,81 @@ def update_annotations(annotations, event_number, annotation):
 zoom_level = 1.0
 zoom_center = None
 last_frame = None
+display_video_size = None
+source_video_size = None
+control_regions = {}
+speed_slider_dragging = False
 
-def get_zoomed_frame(window_name, frame, zoom_level, center=None):
+def _point_in_rect(x, y, rect):
+    x1, y1, x2, y2 = rect
+    return x1 <= x <= x2 and y1 <= y <= y2
+
+def _set_playback_speed_from_x(x):
+    global playback_speed
+
+    slider_rect = control_regions.get('speed_slider')
+    if not slider_rect:
+        return
+
+    x1, _, x2, _ = slider_rect
+    ratio = (x - x1) / max(1, x2 - x1)
+    ratio = max(0.0, min(1.0, ratio))
+    playback_speed = max(1, int(round(ratio * 100)))
+
+def build_control_bar(width, height, top_y):
+    bar = np.full((height, width, 3), (36, 36, 36), dtype=np.uint8)
+    cv2.line(bar, (0, 0), (width - 1, 0), (70, 70, 70), 1)
+    cv2.line(bar, (0, height - 1), (width - 1, height - 1), (70, 70, 70), 1)
+
+    font = cv2.FONT_HERSHEY_SIMPLEX
+    text_color = (235, 235, 235)
+    muted = (165, 165, 165)
+    selected = (70, 125, 190)
+    button_border = (105, 105, 105)
+
+    button_h = 26
+    y1 = max(6, (height - button_h) // 2)
+    y2 = y1 + button_h
+    wave_rect = (10, y1, 78, y2)
+    spec_rect = (84, y1, 152, y2)
+
+    for rect, label, selected_mode in ((wave_rect, 'Wave', 0), (spec_rect, 'Spec', 1)):
+        color = selected if show_mode == selected_mode else (48, 48, 48)
+        cv2.rectangle(bar, (rect[0], rect[1]), (rect[2], rect[3]), color, -1)
+        cv2.rectangle(bar, (rect[0], rect[1]), (rect[2], rect[3]), button_border, 1)
+        cv2.putText(bar, label, (rect[0] + 10, rect[1] + 18), font, 0.48, text_color, 1, cv2.LINE_AA)
+
+    speed_label_x = 170
+    cv2.putText(bar, f'Speed {playback_speed}%', (speed_label_x, y1 + 18), font, 0.48, text_color, 1, cv2.LINE_AA)
+
+    slider_x1 = min(width - 120, 285)
+    slider_x1 = max(speed_label_x + 96, slider_x1)
+    slider_x2 = width - 22
+    slider_y = height // 2
+
+    if slider_x2 - slider_x1 >= 40:
+        cv2.line(bar, (slider_x1, slider_y), (slider_x2, slider_y), muted, 2)
+        knob_x = int(slider_x1 + (playback_speed / 100.0) * (slider_x2 - slider_x1))
+        cv2.circle(bar, (knob_x, slider_y), 7, selected, -1)
+        cv2.circle(bar, (knob_x, slider_y), 7, (230, 230, 230), 1)
+        speed_rect = (slider_x1, top_y + slider_y - 12, slider_x2, top_y + slider_y + 12)
+    else:
+        speed_rect = None
+
+    return bar, {
+        'wave': (wave_rect[0], top_y + wave_rect[1], wave_rect[2], top_y + wave_rect[3]),
+        'spec': (spec_rect[0], top_y + spec_rect[1], spec_rect[2], top_y + spec_rect[3]),
+        'speed_slider': speed_rect,
+    }
+
+def get_zoomed_frame(frame, zoom_level, center=None, output_size=None):
     h, w = frame.shape[:2]
 
     if zoom_level <= 1.0:
-        return frame
+        if output_size is None or output_size == (w, h):
+            return frame
+        interpolation = cv2.INTER_AREA if output_size[0] < w or output_size[1] < h else cv2.INTER_LINEAR
+        return cv2.resize(frame, output_size, interpolation=interpolation)
 
     new_w = int(w / zoom_level)
     new_h = int(h / zoom_level)
@@ -327,25 +479,60 @@ def get_zoomed_frame(window_name, frame, zoom_level, center=None):
     y2 = min(y1 + new_h, h)
 
     cropped = frame[y1:y2, x1:x2]
-    zoomed_frame = cv2.resize(cropped, (w, h), interpolation=cv2.INTER_LINEAR)
+    output_size = output_size or (w, h)
+    zoomed_frame = cv2.resize(cropped, output_size, interpolation=cv2.INTER_LINEAR)
 
     return zoomed_frame
 
 def mouse_callback(event, x, y, flags, param):
-    global zoom_level, zoom_center, last_frame
+    global zoom_level, zoom_center, last_frame, show_mode, speed_slider_dragging
 
-    if event == cv2.EVENT_MOUSEWHEEL:
+    if event == cv2.EVENT_LBUTTONDOWN:
+        if control_regions.get('wave') and _point_in_rect(x, y, control_regions['wave']):
+            show_mode = 0
+            return
+        if control_regions.get('spec') and _point_in_rect(x, y, control_regions['spec']):
+            show_mode = 1
+            return
+        if control_regions.get('speed_slider') and _point_in_rect(x, y, control_regions['speed_slider']):
+            speed_slider_dragging = True
+            _set_playback_speed_from_x(x)
+            return
+
+    if event == cv2.EVENT_MOUSEMOVE and speed_slider_dragging:
+        if flags & cv2.EVENT_FLAG_LBUTTON:
+            _set_playback_speed_from_x(x)
+        else:
+            speed_slider_dragging = False
+        return
+
+    if event == cv2.EVENT_LBUTTONUP:
+        if speed_slider_dragging:
+            _set_playback_speed_from_x(x)
+        speed_slider_dragging = False
+        return
+
+    if event == cv2.EVENT_MOUSEWHEEL and display_video_size and y < display_video_size[1]:
         if flags > 0:  # Scroll up
             zoom_level = min(zoom_level + 0.2, 5.0)
         else:  # Scroll down
             zoom_level = max(zoom_level - 0.2, 1.0)
-        zoom_center = (x, y)
+        if display_video_size and source_video_size:
+            display_w, display_h = display_video_size
+            source_w, source_h = source_video_size
+            if 0 <= x < display_w and 0 <= y < display_h:
+                zoom_center = (
+                    int(x * source_w / max(1, display_w)),
+                    int(y * source_h / max(1, display_h)),
+                )
+        else:
+            zoom_center = (x, y)
 
         if last_frame is not None:
-            get_zoomed_frame('Video Annotation', last_frame, zoom_level, zoom_center)
+            get_zoomed_frame(last_frame, zoom_level, zoom_center, display_video_size)
 
 def annotate_video(video_path, audio_path, labelled_position_path, audio_channel):
-    global zoom_level, zoom_center, last_frame, ctrl_pressed, event_key
+    global zoom_level, zoom_center, last_frame, ctrl_pressed, event_key, display_video_size, source_video_size, control_regions
     mp4_path = convert_video_to_h264(video_path)
     cap = cv2.VideoCapture(mp4_path)
 
@@ -365,10 +552,8 @@ def annotate_video(video_path, audio_path, labelled_position_path, audio_channel
         except Exception as e:
             print(f"Error reading audio file {audio_path}: {e}")
 
-    cv2.namedWindow('Video Annotation')
-    cv2.setMouseCallback('Video Annotation', mouse_callback)
-    cv2.createTrackbar('Mode: 0 Wave | 1 Spec', 'Video Annotation', show_mode, 1, _on_mode_change)
-    cv2.createTrackbar('Speed (0-100%)', 'Video Annotation', 100, 100, lambda x: None)
+    cv2.namedWindow(WINDOW_NAME, cv2.WINDOW_AUTOSIZE)
+    cv2.setMouseCallback(WINDOW_NAME, mouse_callback)
 
     annotations = {}
     e1_frame = e2_frame = e3_frame = e4_frame = e5_frame = e6_frame = e7_frame = e8_frame = None
@@ -403,19 +588,24 @@ def annotate_video(video_path, audio_path, labelled_position_path, audio_channel
     buf_i = 0
     total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
     vh, vw = (int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)), int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)))
-    waveform_h = 140
-    velocity_h = 140
+    layout = calculate_display_layout(vw, vh)
+    display_video_size = (layout['video_width'], layout['video_height'])
+    source_video_size = (vw, vh)
+    waveform_h = layout['waveform_height']
+    velocity_h = layout['velocity_height']
+    control_h = layout['control_height']
+    plot_w = layout['plot_width']
 
-    base_waveform = build_waveform_image(audio_data, audio_sr, vw, waveform_h, audio_channel)
-    base_spectrogram = build_spectrogram_image(audio_data, audio_sr, vw, waveform_h, audio_channel, nfft=512, noverlap=384, max_freq=None)
-    velocity_plot = build_velocity_image(labelled_position_path, vw, velocity_h)
+    base_waveform = build_waveform_image(audio_data, audio_sr, plot_w, waveform_h, audio_channel)
+    base_spectrogram = build_spectrogram_image(audio_data, audio_sr, plot_w, waveform_h, audio_channel, nfft=512, noverlap=384, max_freq=None)
+    velocity_plot = build_velocity_image(labelled_position_path, plot_w, velocity_h)
 
     audio_player = AudioPlayer(audio_data, audio_sr, audio_channel)
     audio_player.play(0)
 
     while True:
 
-        if cv2.getWindowProperty('Video Annotation', cv2.WND_PROP_VISIBLE) < 1:
+        if cv2.getWindowProperty(WINDOW_NAME, cv2.WND_PROP_VISIBLE) < 1:
             quit_app = True
             break
 
@@ -443,10 +633,9 @@ def annotate_video(video_path, audio_path, labelled_position_path, audio_channel
         frame_index = buf_i
         time_in_seconds = frame_index / fps
 
-        display_frame = get_zoomed_frame('Video Annotation', frame, zoom_level, zoom_center)
+        display_frame = get_zoomed_frame(frame, zoom_level, zoom_center, display_video_size)
 
-        mode = cv2.getTrackbarPos('Mode: 0 Wave | 1 Spec', 'Video Annotation')
-        if mode == 0:
+        if show_mode == 0:
             sp = base_waveform.copy()
         else:
             sp = base_spectrogram.copy()
@@ -456,13 +645,8 @@ def annotate_video(video_path, audio_path, labelled_position_path, audio_channel
         if labelled_position_path and os.path.exists(labelled_position_path):
             draw_playhead(vel, frame_index, total_frames - 1)
 
-        if display_frame.shape[1] != sp.shape[1]:
-            sp = cv2.resize(sp, (display_frame.shape[1], sp.shape[0]))
-
-        combined = np.vstack([display_frame, sp, vel])
-
-        current_w, current_h = combined.shape[1], combined.shape[0]
-        combined_disp = cv2.resize(combined, (current_w, int(current_h * 0.9)), interpolation=cv2.INTER_AREA)
+        controls, control_regions = build_control_bar(plot_w, control_h, display_frame.shape[0])
+        combined = np.vstack([display_frame, controls, sp, vel])
 
         title_text = f'{os.path.basename(video_path)} | {frame_index}({time_in_seconds:.2f}s){existing_annotations_title}'
         if e1_frame is not None:
@@ -482,9 +666,9 @@ def annotate_video(video_path, audio_path, labelled_position_path, audio_channel
         if e8_frame is not None and e7_frame is not None and e7_frame<=e8_frame:
             title_text += f' | E8 F(T): {e8_frame}({e8_time:.2f}s)'
 
-        cv2.setWindowTitle('Video Annotation', title_text)
-        cv2.imshow('Video Annotation', combined_disp)
-        speed_val = max(1, cv2.getTrackbarPos('Speed (0-100%)', 'Video Annotation'))
+        cv2.setWindowTitle(WINDOW_NAME, title_text)
+        cv2.imshow(WINDOW_NAME, combined)
+        speed_val = max(1, playback_speed)
         wait_ms = int(33 / (speed_val / 100.0))
         key = cv2.waitKey(wait_ms)
 
